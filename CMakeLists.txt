@@ -2,7 +2,7 @@ cmake_minimum_required (VERSION 3.1)
 
 project (elevatormadness)
 
-add_executable (game ./game/game.cpp)
+add_executable (game ./simulation/game.cpp)
 add_executable (solution ./example/solution.cpp)
 
 set_property(TARGET game PROPERTY CXX_STANDARD 17)
@@ -27,5 +27,15 @@ endif()
 
 CHECK_CXX_COMPILER_FLAG("-pthread" HAS_FLAG_PTHREAD)
 if (HAS_FLAG_PTHREAD)
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -pthread")
+endif()
+
+CHECK_CXX_COMPILER_FLAG("-Wall" HAS_FLAG_WALL)
+if (HAS_FLAG_WALL)
+    set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -pthread")
+endif()
+
+CHECK_CXX_COMPILER_FLAG("-Wextra" HAS_FLAG_WEXTRA)
+if (HAS_FLAG_WEXTRA)
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -pthread")
 endif()

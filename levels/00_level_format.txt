@@ -1,0 +1,5 @@
+LevelName
+Level_Description
+NumberOfFloors NumberOfElevators
+E1_MinFloor E1_MaxFloor E1_Capacity
+TurnNb FloorNb NbNewPeopleCalling DestinationFloor TurnsUntilAnnoyed
