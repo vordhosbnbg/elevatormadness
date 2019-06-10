@@ -31,24 +31,43 @@ Line 1:
 the number of `FloorsNb` and `ElevatorsNb` in the building
 
 Next `ElevatorsNb` lines:
+
 `ElevatorId` - a uniqie identifier for an elevator,
+
 `MinFloor` and `MaxFloor` - the range of floors that the elevator can move between
+
 `Capacity` - the number of people that can fit at once
 
 Input for one game turn:
+
 Line 1:
+
 number of calling `CallingPeopleNb`, waiting `WaitingPeopleNb` and `PeopleInsideElevatorsNb`
+
 Next `ElevatorsNb` lines provide information about each elevator:
+
 `ElevatorId` - unique identifier of the elevator, single character
+
 `Position` - position in meters above floor 0, divisible by 2
+
 `Speed` - either positive or negative number divisible by 2
+
 `PeopleNb` - number of people inside the elevator
+
 Next `CallingPeopleNb` lines provide information about people that are calling an elevator:
+
 `SourceFloor` - where the person is located
+
 `DestinationFloor` - where the person wants to go
+
 Next `WaitingPeopleNb` lines provide information about people that are waiting for their elevator:
+
 `ElevatorId` - which elevator has been assigned to this person
+
 `TurnsToWait` - the number of game turns until the person becomes annoyed and decides to give up on waiting the elevator.
+
 Next `PeopleInsideElevatorsNb` lines:
+
 `ElevatorId` - in which elevator the person is located
+
 `DestinationFloor` - where the person wants to go
