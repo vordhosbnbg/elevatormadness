@@ -195,24 +195,93 @@ struct Level
     }
 };
 
+struct Person
+{
+    unsigned int position = 0;
+    unsigned int srcFloor = 0;
+    unsigned int dstFloor = 0;
+    unsigned int patience = 0;
+    bool inElevator = false;
+};
+
 struct Game
 {
+    Game(const std::string& logfile, const std::string& levelfile)
+    {
+        log.open(logfile, std::ios_base::out);
+        if(!log.is_open())
+        {
+            throw std::runtime_error("Error while opening log file for writing: " + logfile);
+        }
+        loadLevel(levelfile);
+    }
+
+    std::fstream log;
     Level level;
+    size_t turn = 0;
+    std::vector<Person> people;
 
     void loadLevel(const std::string& filename)
     {
+        log << "Opening level from : " << filename << std::endl;
         TextArchive ar(filename);
         ar.load(level);
+        log << "Level loaded." << std::endl;
+    }
+
+    void processEvent(const Event& ev)
+    {
+        log << "Processing event for turn " << turn << std::endl;
+        log << ev.peopleNb << " new people calling on floor " << ev.srcFloor
+            << " to floor " << ev.dstFloor
+            << " with patience " << ev.patience << std::endl;
+
+        for(unsigned int idx = 0; idx < ev.peopleNb; ++idx)
+        {
+            Person p;
+            p.position = ev.srcFloor;
+            p.srcFloor = ev.srcFloor;
+            p.dstFloor = ev.dstFloor;
+            p.patience = ev.patience;
+            people.emplace_back(p);
+        }
+    }
+
+    void runEventsForTurn()
+    {
+        auto eventVecIt = level.timeline.find(turn);
+
+        if(eventVecIt != level.timeline.end())
+        {
+            const std::vector<Event>& eventsForTurn = eventVecIt->second;
+
+            for(const Event& ev : eventsForTurn)
+            {
+                processEvent(ev);
+            }
+
+            level.timeline.erase(eventVecIt);
+        }
+    }
+
+    void run()
+    {
+        do
+        {
+            runEventsForTurn();
+            ++turn;
+        }
+        while(!level.timeline.empty());
+
     }
 };
 
 int main(int argc, char* argv[])
 {
-    if(argc == 2)
+    if(argc == 3)
     {
-        Game game;
-        std::string levelFile(argv[1]);
-        game.loadLevel(levelFile);
+        Game game(argv[1], argv[2]);
+        game.run();
     }
     return 0;
 }
