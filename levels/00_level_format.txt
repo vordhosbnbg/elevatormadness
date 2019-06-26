@@ -1,5 +1,5 @@
-LevelName
-Level_Description
+Level Name
+Level Description
 NumberOfFloors
 NumberOfElevators
 ElevatorName1 E1_MinFloor E1_MaxFloor E1_Capacity
