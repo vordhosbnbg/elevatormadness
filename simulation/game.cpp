@@ -2,6 +2,9 @@
 #include <fstream>
 #include <vector>
 #include <map>
+#include <unordered_map>
+#include <memory>
+#include <list>
 
 
 struct TextArchive
@@ -80,6 +83,7 @@ struct TextArchive
         }
     }
 
+
     void endLoadObject()
     {
         fs.ignore();
@@ -122,12 +126,77 @@ struct Event
     }
 };
 
+struct Person
+{
+    static constexpr unsigned int scoreCoefFloors = 10;
+    static constexpr unsigned int scoreCoefPatience = 20;
+    unsigned int srcFloor = 0;
+    unsigned int dstFloor = 0;
+    int patience = 0;
+    bool inElevator = false;
+    bool gotToDestination = false;
+    std::string expectedElevator;
+
+    int getScore()
+    {
+        if(!inElevator)
+        {
+            return 0;
+        }
+        else
+        {
+            return (std::abs((int)(dstFloor - srcFloor)) * scoreCoefFloors + patience * scoreCoefPatience);
+        }
+    }
+};
+
+
+
 struct Elevator
 {
+    static constexpr unsigned int acceleration = 2;
+    static constexpr unsigned int floorHeight = 4;
     std::string elevatorName;
-    unsigned int minFloor;
-    unsigned int maxFloor;
-    unsigned int capacity;
+    unsigned int minFloor = 0;
+    unsigned int maxFloor = 0;
+    unsigned int capacity = 0;
+    int heightMeters = 0;
+    int speed = 0;
+    int command = 0;
+    std::list<Person*> peopleInside;
+
+    void accelerateDown()
+    {
+        command = -1;
+    }
+
+    void accelerateUp()
+    {
+        command = 1;
+    }
+
+    void stop()
+    {
+        command = 0;
+    }
+
+    void processTime()
+    {
+        speed += acceleration * command;
+        heightMeters += speed;
+    }
+
+    int getFloor()
+    {
+        if(heightMeters % floorHeight != 0)
+        {
+            return -1;
+        }
+        else
+        {
+            return heightMeters / floorHeight;
+        }
+    }
 
     template <class Archive>
     void load(Archive& ar)
@@ -144,8 +213,8 @@ struct Level
 {
     std::string name;
     std::string description;
-    unsigned int floorsNb;
-    std::vector<Elevator> elevators;
+    unsigned int floorsNb = 0;
+    std::unordered_map<std::string, Elevator> elevators;
     std::map<unsigned int, std::vector<Event>> timeline;
 
     void addEvent(const Event& ev)
@@ -181,7 +250,13 @@ struct Level
         ar.load(name, true);
         ar.load(description, true);
         ar.load(floorsNb); ar.endLoadObject();
-        ar.load(elevators);
+        std::vector<Elevator> elevatorsVec;
+        ar.load(elevatorsVec);
+
+        for(Elevator& elevator : elevatorsVec)
+        {
+            elevators[elevator.elevatorName] = elevator;
+        }
 
         size_t eventsNb;
 
@@ -195,14 +270,6 @@ struct Level
     }
 };
 
-struct Person
-{
-    unsigned int position = 0;
-    unsigned int srcFloor = 0;
-    unsigned int dstFloor = 0;
-    unsigned int patience = 0;
-    bool inElevator = false;
-};
 
 struct Game
 {
@@ -218,15 +285,16 @@ struct Game
 
     std::fstream log;
     Level level;
+    std::list<Person> people;
     size_t turn = 0;
-    std::vector<Person> people;
+    unsigned int score = 0;
 
     void loadLevel(const std::string& filename)
     {
         log << "Opening level from : " << filename << std::endl;
         TextArchive ar(filename);
         ar.load(level);
-        log << "Level loaded." << std::endl;
+        log << "Level loaded: " << level.name << " (" << level.description << ")" << std::endl;
     }
 
     void processEvent(const Event& ev)
@@ -239,7 +307,6 @@ struct Game
         for(unsigned int idx = 0; idx < ev.peopleNb; ++idx)
         {
             Person p;
-            p.position = ev.srcFloor;
             p.srcFloor = ev.srcFloor;
             p.dstFloor = ev.dstFloor;
             p.patience = ev.patience;
@@ -247,7 +314,7 @@ struct Game
         }
     }
 
-    void runEventsForTurn()
+    void spawnEventsForTurn()
     {
         auto eventVecIt = level.timeline.find(turn);
 
@@ -264,15 +331,113 @@ struct Game
         }
     }
 
+    bool processTime()
+    {
+        for(std::pair<std::string, Elevator> elevatorPair : level.elevators)
+        {
+            Elevator& elevator = elevatorPair.second;
+
+            elevator.processTime();
+            log << "Elevator " << elevator.elevatorName <<
+                   " at height " << elevator.heightMeters << " m" <<
+                   " moving with speed " << elevator.speed << " m/s" <<
+                   " and acceleration " << (elevator.acceleration * elevator.command) << " m/s^2" << std::endl;
+
+            if((elevator.heightMeters < 0) ||
+               (elevator.heightMeters > (level.floorsNb * Elevator::floorHeight))) // out of the building
+            {
+                log << "Elevator " << elevator.elevatorName << " has crashed out of the building. " << elevator.peopleInside.size() << " people died.";
+                score = 0;
+                return false;
+            }
+            else if(elevator.getFloor() >= 0 && elevator.speed == 0) // elevator on a floor and not moving
+            {
+                auto personIt = elevator.peopleInside.begin();
+
+                while(personIt != elevator.peopleInside.end())
+                {
+                    Person& person = **personIt;
+                    if(person.dstFloor == elevator.getFloor())
+                    {
+                        person.inElevator = false;
+                        person.gotToDestination = true;
+                        personIt = elevator.peopleInside.erase(personIt);
+                    }
+                    else
+                    {
+                        ++personIt;
+                    }
+                }
+            }
+        }
+
+        auto personIt = people.begin();
+
+        while(personIt != people.end())
+        {
+            Person& person = *personIt;
+            if(person.gotToDestination)
+            {
+                unsigned int personScore = person.getScore();
+                log << "A person got from floor " << person.srcFloor <<
+                       " to floor " << person.dstFloor <<
+                       " with remaining patience " << person.patience;
+
+                log << "Given score: +" << personScore;
+                score += personScore;
+                personIt = people.erase(personIt);
+            }
+            else if(person.patience <= 0)
+            {
+                log << "A person on floor " << person.srcFloor <<
+                       " got tired on waiting for elevator " << person.expectedElevator <<
+                       ". No score awarded." << std::endl;
+                personIt = people.erase(personIt);
+            }
+            else
+            {
+                if(!person.inElevator)
+                {
+                    if(person.expectedElevator.empty())
+                    {
+                        log << "No elevator response on floor " << person.srcFloor << std::endl;
+                        score = 0;
+                        return false;
+                    }
+                    else if(person.srcFloor == level.elevators[person.expectedElevator].getFloor())
+                    {
+                        log << "A person entered elevator " << person.expectedElevator <<
+                               " on floor " << person.srcFloor << std::endl;
+                        person.inElevator = true;
+                        level.elevators[person.expectedElevator].peopleInside.emplace_back(&person);
+                    }
+                    else
+                    {
+                        --person.patience;
+                    }
+                }
+
+                ++personIt;
+            }
+        }
+
+        return true;
+    }
+
     void run()
     {
         do
         {
-            runEventsForTurn();
+            spawnEventsForTurn();
+            if(!processTime())
+            {
+                break;
+            }
             ++turn;
         }
-        while(!level.timeline.empty());
+        while(!level.timeline.empty() && !people.empty());
 
+        log << "GAME OVER\nTotal Score:\n" << score << std::endl;
     }
 };
 
@@ -280,8 +445,15 @@ int main(int argc, char* argv[])
 {
     if(argc == 3)
     {
-        Game game(argv[1], argv[2]);
-        game.run();
+        try
+        {
+            Game game(argv[1], argv[2]);
+            game.run();
+        }
+        catch (std::exception& e)
+        {
+            std::cout << "Critical error: " << e.what() << std::endl;
+        }
     }
     return 0;
 }
