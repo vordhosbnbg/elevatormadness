@@ -5,6 +5,10 @@
 #include <unordered_map>
 #include <memory>
 #include <list>
+#include <algorithm>
+#include <unordered_set>
+#include <sys/select.h>
+#include <unistd.h>
 
 
 struct TextArchive
@@ -137,6 +141,21 @@ struct Person
     bool gotToDestination = false;
     std::string expectedElevator;
 
+    bool isCalling() const
+    {
+        return (!inElevator && expectedElevator.empty());
+    }
+
+    bool isWaiting() const
+    {
+        return (!inElevator && !expectedElevator.empty());
+    }
+
+    bool isMoving() const
+    {
+        return inElevator;
+    }
+
     int getScore()
     {
         if(!inElevator)
@@ -214,7 +233,7 @@ struct Level
     std::string name;
     std::string description;
     unsigned int floorsNb = 0;
-    std::unordered_map<std::string, Elevator> elevators;
+    std::map<std::string, Elevator> elevators;
     std::map<unsigned int, std::vector<Event>> timeline;
 
     void addEvent(const Event& ev)
@@ -424,11 +443,192 @@ struct Game
         return true;
     }
 
+    void outputInitData()
+    {
+        std::cout << level.floorsNb << std::endl;
+        std::cout << level.elevators.size() << std::endl;
+        for(std::pair<std::string, Elevator> elevatorPair : level.elevators)
+        {
+            const Elevator& elevator = elevatorPair.second;
+            std::cout << elevator.elevatorName << " "
+                      << elevator.minFloor << " "
+                      << elevator.maxFloor << " "
+                      << elevator.capacity << std::endl;
+        }
+    }
+
+    void outputForTurn()
+    {
+        for(std::pair<std::string, Elevator> elevatorPair : level.elevators)
+        {
+            const Elevator& elevator = elevatorPair.second;
+            std::cout << elevator.elevatorName << " "
+                      << elevator.heightMeters << " "
+                      << elevator.command << " "
+                      << elevator.peopleInside.size() << std::endl;
+        }
+
+        std::vector<const Person*> peopleCalling;
+        std::vector<const Person*> peopleWaiting;
+        std::vector<const Person*> peopleMoving;
+
+        peopleCalling.reserve(people.size());
+        peopleWaiting.reserve(people.size());
+        peopleMoving.reserve(people.size());
+
+        for(const Person& person : people)
+        {
+            if(person.isCalling())
+            {
+                peopleCalling.emplace_back(&person);
+            }
+            else if(person.isWaiting())
+            {
+                peopleWaiting.emplace_back(&person);
+            }
+            else if(person.isMoving())
+            {
+                peopleMoving.emplace_back(&person);
+            }
+        }
+
+        std::cout << peopleCalling.size() << std::endl;
+        for(const Person* person : peopleCalling)
+        {
+            std::cout << person->srcFloor << " " << person->dstFloor << std::endl;
+        }
+
+        std::cout << peopleWaiting.size() << std::endl;
+        for(const Person* person : peopleWaiting)
+        {
+            std::cout << person->srcFloor << " " << person->dstFloor << " "
+                      << person->expectedElevator << " " << person->patience << std::endl;
+        }
+
+        std::cout << peopleMoving.size() << std::endl;
+        for(const Person* person : peopleMoving)
+        {
+            std::cout << person->expectedElevator << " " << person->dstFloor << " "
+                      << person->expectedElevator << " " << person->patience << std::endl;
+        }
+
+    }
+
+    template<class T>
+    bool getInputWithTimeout(unsigned int seconds, unsigned int microseconds, T& val)
+    {
+        fd_set readSet;
+        FD_ZERO(&readSet);
+        FD_SET(STDIN_FILENO, &readSet);
+        struct timeval tv = {seconds, microseconds};  // 10 seconds, 0 microseconds;
+        if (select(STDIN_FILENO+1, &readSet, NULL, NULL, &tv) > 0)
+        {
+            if(FD_ISSET(STDIN_FILENO, &readSet))
+            {
+
+                if(!(std::cin >> val))
+                {
+                    log << "Error while reading player output - wrong type." << std::endl;
+                    return false;
+                }
+                else
+                {
+                    return true;
+                }
+            }
+            else
+            {
+                log << "No player output." << std::endl;
+                return false;
+            }
+        }
+        else
+        {
+            log << "Player output timeout." << std::endl;
+            return false;
+        }
+
+    }
+
+    bool getInputForTurn()
+    {
+
+        int firstTimeout = 10000;
+        for(Person& person : people)
+        {
+            if(person.isWaiting())
+            {
+                if(!getInputWithTimeout(0, firstTimeout, person.expectedElevator))
+                {
+                    log << "Error while reading player output for waiting people elevator assignment." << std::endl;
+                    return false;
+                }
+                std::cin.ignore();
+            }
+        }
+
+        std::unordered_set<std::string> commandedElevators;
+
+        for(size_t elevatorIdx = 0; elevatorIdx < level.elevators.size(); ++elevatorIdx)
+        {
+            std::string elevatorName;
+            int command = 0;
+            if(!getInputWithTimeout(0, firstTimeout, elevatorName))
+            {
+                return false;
+            }
+            else
+            {
+                if(!getInputWithTimeout(0, firstTimeout, command))
+                {
+                    return false;
+                }
+                else
+                {
+                    std::cin.ignore();
+                    auto emplaceResult = commandedElevators.emplace(elevatorName);
+                    if(!emplaceResult.second)
+                    {
+                        log << "Error - elevator received commands twice in a turn";
+                        return false;
+                    }
+                    else
+                    {
+                        auto elevatorIt = level.elevators.find(elevatorName);
+                        if(elevatorIt == level.elevators.end())
+                        {
+                            log << "Error - elevator with name " << elevatorName << " does not exist." << std::endl;
+                            return false;
+                        }
+                        else
+                        {
+                            Elevator& elevator = elevatorIt->second;
+                            elevator.command = command;
+                        }
+                    }
+                }
+            }
+        }
+
+        if(commandedElevators.size() != level.elevators.size())
+        {
+            log << "Did not receive input for all elevators" << std::endl;
+            return false;
+        }
+        else
+        {
+            return true;
+        }
+    }
+
     void run()
     {
+        outputInitData();
         do
         {
             spawnEventsForTurn();
+            outputForTurn();
+            getInputForTurn();
             if(!processTime())
             {
                 break;

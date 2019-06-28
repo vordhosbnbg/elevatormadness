@@ -18,7 +18,7 @@ The game plays in turns and on each turn you will receive the following info:
 When a person calls an elevator you must respond with an elevatorId, which the person will wait to get in. You cannot change this assignment later.
 A person remembers his elevator and waits for it, until the specific elevator stops at his floor, or until his patience runs out.
 
-The elevators are controlled by motors, that can be given one of two actions - acellerated up or accelerated down. When an elevator stops (speed = 0) at a given floor, the doors open and people can get in and out.
+The elevators are controlled by motors, that can be given three commands - acellerated up, accelerated down or inactive. When an elevator stops (speed = 0) at a given floor, the doors open and people can get in and out.
 
 Floors always start from 0 (as every true countable thing should).
 A floor is 4 meters high and elevators can accelerate either up or down with 2 m/s<sup>2</sup>
@@ -52,6 +52,8 @@ Next `ElevatorsNb` lines provide information about each elevator:
 
 `Speed` - either positive or negative number divisible by 2
 
+`ElevatorCommand` - the currend command for this elevator - `-1` (accelerating down), `0` (inactive), `1` accelerating up
+
 `PeopleNb` - number of people inside the elevator
 
 Next `CallingPeopleNb` lines provide information about people that are calling an elevator:
@@ -62,6 +64,10 @@ Next `CallingPeopleNb` lines provide information about people that are calling a
 
 Next `WaitingPeopleNb` lines provide information about people that are waiting for their elevator:
 
+`SourceFloor` - where the person is located
+
+`DestinationFloor` - where the person wants to go
+
 `ElevatorId` - which elevator has been assigned to this person
 
 `TurnsToWait` - the number of game turns until the person becomes annoyed and decides to give up on waiting the elevator.
@@ -71,3 +77,16 @@ Next `PeopleInsideElevatorsNb` lines:
 `ElevatorId` - in which elevator the person is located
 
 `DestinationFloor` - where the person wants to go
+
+### Output Format
+Expected output for one game turn:
+
+First `WaitingPeopleNb` lines:
+
+`ElevatorId` - which elevator has been assigned to this person
+
+Next `ElevatorsNb` lines:
+
+`ElevatorId` - unique identifier of the elevator, single character
+
+`ElevatorCommand` - the currend command for this elevator - `-1` (accelerating down), `0` (inactive), `1` accelerating up
