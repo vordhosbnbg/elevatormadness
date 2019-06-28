@@ -7,6 +7,8 @@
 #include <list>
 #include <algorithm>
 #include <unordered_set>
+#include <iomanip>
+
 #include <sys/select.h>
 #include <unistd.h>
 
@@ -158,14 +160,7 @@ struct Person
 
     int getScore()
     {
-        if(!inElevator)
-        {
-            return 0;
-        }
-        else
-        {
-            return (std::abs((int)(dstFloor - srcFloor)) * scoreCoefFloors + patience * scoreCoefPatience);
-        }
+        return (std::abs((int)(dstFloor - srcFloor)) * scoreCoefFloors + patience * scoreCoefPatience);
     }
 };
 
@@ -173,8 +168,8 @@ struct Person
 
 struct Elevator
 {
-    static constexpr unsigned int acceleration = 2;
-    static constexpr unsigned int floorHeight = 4;
+    static constexpr int acceleration = 2;
+    static constexpr int floorHeight = 4;
     std::string elevatorName;
     unsigned int minFloor = 0;
     unsigned int maxFloor = 0;
@@ -352,20 +347,24 @@ struct Game
 
     bool processTime()
     {
-        for(std::pair<std::string, Elevator> elevatorPair : level.elevators)
+        for(std::pair<const std::string, Elevator>& elevatorPair : level.elevators)
         {
             Elevator& elevator = elevatorPair.second;
 
             elevator.processTime();
+            float floor = (float)elevator.heightMeters / (float)Elevator::floorHeight;
             log << "Elevator " << elevator.elevatorName <<
                    " at height " << elevator.heightMeters << " m" <<
+                   "(fl. " << std::fixed << std::setprecision(1) << floor << ")" <<
                    " moving with speed " << elevator.speed << " m/s" <<
-                   " and acceleration " << (elevator.acceleration * elevator.command) << " m/s^2" << std::endl;
+                   " and acceleration " << (elevator.acceleration * elevator.command) << " m/s^2" <<
+                   " with " << elevator.peopleInside.size() << " people inside" << std::endl;
 
             if((elevator.heightMeters < 0) ||
                (elevator.heightMeters > (level.floorsNb * Elevator::floorHeight))) // out of the building
             {
-                log << "Elevator " << elevator.elevatorName << " has crashed out of the building. " << elevator.peopleInside.size() << " people died.";
+                log << "Elevator " << elevator.elevatorName << " has crashed out of the building. "
+                    << elevator.peopleInside.size() << " people died." << std::endl;
                 score = 0;
                 return false;
             }
@@ -400,9 +399,9 @@ struct Game
                 unsigned int personScore = person.getScore();
                 log << "A person got from floor " << person.srcFloor <<
                        " to floor " << person.dstFloor <<
-                       " with remaining patience " << person.patience;
+                       " with remaining patience " << person.patience << std::endl;
 
-                log << "Given score: +" << personScore;
+                log << "Given score: +" << personScore << std::endl;;
                 score += personScore;
                 personIt = people.erase(personIt);
             }
@@ -419,11 +418,11 @@ struct Game
                 {
                     if(person.expectedElevator.empty())
                     {
-                        log << "No elevator response on floor " << person.srcFloor << std::endl;
+                        log << "No elevator response for person on floor " << person.srcFloor << std::endl;
                         score = 0;
                         return false;
                     }
-                    else if(person.srcFloor == level.elevators[person.expectedElevator].getFloor())
+                    else if(person.srcFloor == level.elevators[person.expectedElevator].getFloor() && level.elevators[person.expectedElevator].speed == 0)
                     {
                         log << "A person entered elevator " << person.expectedElevator <<
                                " on floor " << person.srcFloor << std::endl;
@@ -447,7 +446,7 @@ struct Game
     {
         std::cout << level.floorsNb << std::endl;
         std::cout << level.elevators.size() << std::endl;
-        for(std::pair<std::string, Elevator> elevatorPair : level.elevators)
+        for(std::pair<const std::string, Elevator>& elevatorPair : level.elevators)
         {
             const Elevator& elevator = elevatorPair.second;
             std::cout << elevator.elevatorName << " "
@@ -459,11 +458,12 @@ struct Game
 
     void outputForTurn()
     {
-        for(std::pair<std::string, Elevator> elevatorPair : level.elevators)
+        for(std::pair<const std::string, Elevator>& elevatorPair : level.elevators)
         {
             const Elevator& elevator = elevatorPair.second;
             std::cout << elevator.elevatorName << " "
                       << elevator.heightMeters << " "
+                      << elevator.speed << " "
                       << elevator.command << " "
                       << elevator.peopleInside.size() << std::endl;
         }
@@ -509,7 +509,7 @@ struct Game
         for(const Person* person : peopleMoving)
         {
             std::cout << person->expectedElevator << " " << person->dstFloor << " "
-                      << person->expectedElevator << " " << person->patience << std::endl;
+                      << " " << person->patience << std::endl;
         }
 
     }
@@ -552,17 +552,47 @@ struct Game
 
     bool getInputForTurn()
     {
+        log << "Getting player input" << std::endl;
 
-        int firstTimeout = 10000;
+        auto inputTimeout = []() -> bool
+        {
+            static bool firstCall = true;
+            if(firstCall)
+            {
+                firstCall = false;
+                return 1000;
+            }
+            else
+            {
+                return 10;
+            }
+        };
         for(Person& person : people)
         {
-            if(person.isWaiting())
+            if(person.isCalling())
             {
-                if(!getInputWithTimeout(0, firstTimeout, person.expectedElevator))
+                std::string expectedElevator;
+                if(!getInputWithTimeout(0, inputTimeout(), expectedElevator))
                 {
                     log << "Error while reading player output for waiting people elevator assignment." << std::endl;
                     return false;
                 }
+                else
+                {
+                    auto it = level.elevators.find(expectedElevator);
+                    if(it == level.elevators.end())
+                    {
+                        log << "Error while reading player output for waiting people elevator assignment." << std::endl;
+                        return false;
+                    }
+                    else
+                    {
+                        person.expectedElevator = expectedElevator;
+                        log << "Response for elevator call for person on floor " << person.srcFloor
+                            << " is " << person.expectedElevator << std::endl;
+                    }
+                }
+
                 std::cin.ignore();
             }
         }
@@ -573,13 +603,13 @@ struct Game
         {
             std::string elevatorName;
             int command = 0;
-            if(!getInputWithTimeout(0, firstTimeout, elevatorName))
+            if(!getInputWithTimeout(0, inputTimeout(), elevatorName))
             {
                 return false;
             }
             else
             {
-                if(!getInputWithTimeout(0, firstTimeout, command))
+                if(!getInputWithTimeout(0, inputTimeout(), command))
                 {
                     return false;
                 }
@@ -604,6 +634,8 @@ struct Game
                         {
                             Elevator& elevator = elevatorIt->second;
                             elevator.command = command;
+
+                            log << "Issuing command " << command << " to elevator " << elevatorName << std::endl;
                         }
                     }
                 }
@@ -628,14 +660,17 @@ struct Game
         {
             spawnEventsForTurn();
             outputForTurn();
-            getInputForTurn();
+            if(!getInputForTurn())
+            {
+                break;
+            }
             if(!processTime())
             {
                 break;
             }
             ++turn;
         }
-        while(!level.timeline.empty() && !people.empty());
+        while(!level.timeline.empty() || !people.empty());
 
         log << "GAME OVER\nTotal Score:\n" << score << std::endl;
     }
